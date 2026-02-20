@@ -1,9 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
-import pandas as pd
-from datetime import datetime, timedelta
-
 app = FastAPI(title="Indian Stock Search API")
 
 # Configure CORS for frontend access
