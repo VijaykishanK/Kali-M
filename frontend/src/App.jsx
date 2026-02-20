@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, TrendingUp, TrendingDown, LogOut, Info, Gauge, Zap, BarChart3 } from 'lucide-react';
 import axios from 'axios';
 import { popularIndianStocks } from './indianStocks';
@@ -30,6 +30,8 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [timeRange, setTimeRange] = useState('1mo');
+  const [marketTrends, setMarketTrends] = useState([]);
+  const [trendsLoading, setTrendsLoading] = useState(false);
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -40,6 +42,24 @@ const App = () => {
       setError('Invalid password');
     }
   };
+
+  const fetchMarketTrends = async () => {
+    setTrendsLoading(true);
+    try {
+      const res = await axios.get(`${API_URL.replace('/api/stock', '/api/market/trends')}`);
+      setMarketTrends(res.data);
+    } catch (err) {
+      console.error("Failed to fetch trends", err);
+    } finally {
+      setTrendsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchMarketTrends();
+    }
+  }, [isAuthenticated]);
 
   const fetchStockData = async (symbol, range = timeRange) => {
     if (!symbol.trim()) return;
@@ -217,12 +237,63 @@ const App = () => {
         )}
 
         {!loading && !stockData && !searchError && (
-          <div className="empty-state">
-            <div className="empty-icon-wrapper">
-              <Search size={48} />
+          <div className="market-scanner animate-fade-in">
+            <div className="scanner-header">
+              <div className="header-title">
+                <Gauge size={24} className="primary-icon" />
+                <div>
+                  <h3>Daily Market Analysis</h3>
+                  <p>AI-powered predictions for the top 25 Indian stocks</p>
+                </div>
+              </div>
+              <button
+                className="refresh-button"
+                onClick={fetchMarketTrends}
+                disabled={trendsLoading}
+              >
+                <Zap size={16} />
+                <span>{trendsLoading ? 'Scanning...' : 'Refresh Analysis'}</span>
+              </button>
             </div>
-            <h3>Discover Market Opportunities</h3>
-            <p>Search for any Indian stock to view real-time data and historical charts.</p>
+
+            <div className="trends-grid">
+              {marketTrends.map((stock) => (
+                <div
+                  key={stock.symbol}
+                  className="trend-card"
+                  onClick={() => handleSuggestionClick(stock.symbol)}
+                >
+                  <div className="trend-main">
+                    <div>
+                      <span className="trend-symbol">{stock.symbol}</span>
+                      <h4 className="trend-name">{stock.name}</h4>
+                    </div>
+                    <div className="trend-price-info">
+                      <span className="trend-price">{formatCurrency(stock.price)}</span>
+                      <span className={`trend-change ${stock.change >= 0 ? 'positive' : 'negative'}`}>
+                        {stock.change >= 0 ? '+' : ''}{stock.percent_change}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="trend-prediction">
+                    <div className="prediction-metrics">
+                      <span className="likelihood-val" style={{ color: getLikelihoodColor(stock.prediction.likelihood) }}>
+                        {stock.prediction.likelihood}%
+                      </span>
+                      <div className={`mini-badge ${stock.prediction.signal.toLowerCase()}`}>
+                        {stock.prediction.signal}
+                      </div>
+                    </div>
+                    <div className="trend-reasons">
+                      {stock.prediction.reasons.slice(0, 2).map((reason, i) => (
+                        <span key={i} className="tiny-tag">{reason}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

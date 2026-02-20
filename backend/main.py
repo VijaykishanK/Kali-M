@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -15,6 +16,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Top Indian stocks to scan automatically (NIFTY 50 key stocks)
+SCAN_STOCKS = [
+    ("RELIANCE", "Reliance Industries"),
+    ("TCS", "Tata Consultancy Services"),
+    ("HDFCBANK", "HDFC Bank"),
+    ("ICICIBANK", "ICICI Bank"),
+    ("INFY", "Infosys"),
+    ("ITC", "ITC Limited"),
+    ("SBIN", "State Bank of India"),
+    ("BHARTIARTL", "Bharti Airtel"),
+    ("BAJFINANCE", "Bajaj Finance"),
+    ("KOTAKBANK", "Kotak Mahindra Bank"),
+    ("LT", "Larsen & Toubro"),
+    ("HINDUNILVR", "Hindustan Unilever"),
+    ("AXISBANK", "Axis Bank"),
+    ("MARUTI", "Maruti Suzuki"),
+    ("SUNPHARMA", "Sun Pharma"),
+    ("TATASTEEL", "Tata Steel"),
+    ("TATAMOTORS", "Tata Motors"),
+    ("NTPC", "NTPC"),
+    ("WIPRO", "Wipro"),
+    ("HCLTECH", "HCL Technologies"),
+    ("TECHM", "Tech Mahindra"),
+    ("HEROMOTOCO", "Hero MotoCorp"),
+    ("DRREDDY", "Dr Reddy's Labs"),
+    ("CIPLA", "Cipla"),
+    ("COALINDIA", "Coal India"),
+]
+
 def format_ticker(symbol: str) -> str:
     """Format symbol for Indian stocks on Yahoo Finance"""
     symbol = symbol.upper().strip()
@@ -25,24 +55,27 @@ def format_ticker(symbol: str) -> str:
 def calculate_prediction(hist: pd.DataFrame):
     """Calculate likelihood of stock going up based on RSI and SMA"""
     if len(hist) < 20:
-        return {"likelihood": 50, "signal": "Neutral", "reason": "Insufficient data"}
+        return {"likelihood": 50, "signal": "Neutral", "reasons": ["Insufficient data"]}
     
     # Calculate RSI
     delta = hist['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    
+    # Avoid division by zero
+    loss = loss.replace(0, 0.001)
     rs = gain / loss
-    rsi = 100 - (100 / (1 + rs)).iloc[-1]
+    rsi_series = 100 - (100 / (1 + rs))
+    rsi = float(rsi_series.iloc[-1])
     
     # Calculate SMA
-    sma_20 = hist['Close'].rolling(window=20).mean().iloc[-1]
-    current_price = hist['Close'].iloc[-1]
+    sma_20 = hist['Close'].rolling(window=20).mean()
+    sma_20_val = float(sma_20.iloc[-1])
+    current_price = float(hist['Close'].iloc[-1])
     
-    # Simple weighted logic
-    score = 50
+    score = 50.0
     reasons = []
     
-    # RSI Logic
     if rsi < 30:
         score += 25
         reasons.append("Oversold (RSI)")
@@ -56,25 +89,68 @@ def calculate_prediction(hist: pd.DataFrame):
         score -= 10
         reasons.append("Negative Momentum")
         
-    # SMA Logic
-    if current_price > sma_20:
+    if current_price > sma_20_val:
         score += 15
         reasons.append("Above 20-day SMA")
     else:
         score -= 15
         reasons.append("Below 20-day SMA")
         
-    # Clamp score
-    score = max(5, min(95, score))
-    
+    score = max(5.0, min(95.0, score))
     signal = "Bullish" if score > 55 else "Bearish" if score < 45 else "Neutral"
     
     return {
-        "likelihood": round(float(score), 2),
+        "likelihood": round(score, 2),
         "signal": signal,
-        "rsi": round(float(rsi), 2),
+        "rsi": round(rsi, 2),
         "reasons": reasons
     }
+
+def _fetch_single_stock_scan(symbol: str, name: str):
+    """Fetch and analyze a single stock for the market scanner (runs in thread)"""
+    try:
+        ticker_symbol = format_ticker(symbol)
+        stock = yf.Ticker(ticker_symbol)
+        hist = stock.history(period="60d")
+        if hist.empty:
+            return None
+
+        info = stock.info
+        current_price = float(hist['Close'].iloc[-1])
+        prev_close = float(info.get('previousClose', current_price))
+        change = current_price - prev_close
+        percent_change = (change / prev_close) * 100 if prev_close else 0
+        prediction = calculate_prediction(hist)
+
+        return {
+            "symbol": symbol,
+            "name": info.get('longName', name),
+            "price": round(current_price, 2),
+            "change": round(change, 2),
+            "percent_change": round(percent_change, 2),
+            "prediction": prediction,
+        }
+    except Exception as e:
+        print(f"Scanner error for {symbol}: {e}")
+        return None
+
+@app.get("/api/market/trends")
+async def get_market_trends():
+    """Scan all major Indian stocks and return predictions sorted by signal strength"""
+    results = []
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {
+            executor.submit(_fetch_single_stock_scan, sym, name): sym
+            for sym, name in SCAN_STOCKS
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                results.append(result)
+    
+    # Sort: Bullish first (highest likelihood), then Bearish (lowest likelihood), Neutral in middle
+    results.sort(key=lambda x: x['prediction']['likelihood'], reverse=True)
+    return results
 
 @app.get("/api/stock/{symbol}")
 async def get_stock_data(symbol: str):
@@ -83,16 +159,15 @@ async def get_stock_data(symbol: str):
         ticker_symbol = format_ticker(symbol)
         stock = yf.Ticker(ticker_symbol)
         
-        # Get history for prediction (need at least 30 days)
         hist = stock.history(period="60d")
         if hist.empty:
             raise HTTPException(status_code=404, detail=f"Stock '{symbol.upper()}' not found")
         
         info = stock.info
         current_price = float(hist['Close'].iloc[-1])
-        prev_close = info.get('previousClose', current_price)
+        prev_close = float(info.get('previousClose', current_price))
         
-        change = float(current_price) - float(prev_close)
+        change = current_price - prev_close
         percent_change = (change / prev_close) * 100 if prev_close else 0
 
         prediction = calculate_prediction(hist)
@@ -110,7 +185,7 @@ async def get_stock_data(symbol: str):
                 "peRatio": info.get('trailingPE'),
                 "week52High": info.get('fiftyTwoWeekHigh'),
                 "week52Low": info.get('fiftyTwoWeekLow'),
-                "dividendYield": info.get('dividendYield', 0) * 100 if info.get('dividendYield') else 0,
+                "dividendYield": float(info.get('dividendYield', 0)) * 100 if info.get('dividendYield') else 0,
                 "volume": info.get('volume'),
                 "sector": info.get('sector'),
                 "industry": info.get('industry')
@@ -129,7 +204,6 @@ async def get_stock_history(symbol: str, range: str = "1mo"):
         ticker_symbol = format_ticker(symbol)
         stock = yf.Ticker(ticker_symbol)
         
-        # Mapping frontend ranges to yfinance periods/intervals
         range_mapping = {
             "1d": {"period": "1d", "interval": "5m"},
             "1w": {"period": "5d", "interval": "15m"},
@@ -145,12 +219,11 @@ async def get_stock_history(symbol: str, range: str = "1mo"):
         if hist.empty:
             raise HTTPException(status_code=404, detail="No historical data found")
             
-        # Format data for frontend chart
         chart_data = []
         for index, row in hist.iterrows():
             chart_data.append({
                 "time": index.strftime("%Y-%m-%d %H:%M:%S") if params["interval"] in ["5m", "15m"] else index.strftime("%Y-%m-%d"),
-                "value": round(row['Close'], 2)
+                "value": round(float(row['Close']), 2)
             })
             
         return chart_data
