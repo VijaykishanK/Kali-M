@@ -19,6 +19,7 @@ const API_URL = import.meta.env.PROD
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
@@ -35,11 +36,11 @@ const App = () => {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (password === 'Vijay123@@') {
+    if (username === 'Vijavk24' && password === 'Vijavk24@#&') {
       setIsAuthenticated(true);
       setError('');
     } else {
-      setError('Invalid password');
+      setError('Invalid username or password');
     }
   };
 
@@ -129,6 +130,15 @@ const App = () => {
             <p>Enter password to access the platform</p>
           </div>
           <form onSubmit={handleLogin} className="login-form">
+            <div className="input-group">
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username"
+                className={error ? 'input-error' : ''}
+              />
+            </div>
             <div className="input-group">
               <input
                 type="password"

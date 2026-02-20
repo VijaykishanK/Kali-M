@@ -2,4 +2,4 @@ fastapi
 uvicorn
 yfinance
 pandas
-flask-cors
+numpy
