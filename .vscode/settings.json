@@ -2,6 +2,6 @@
     "python.defaultInterpreterPath": "/usr/bin/python3",
     "python.analysis.extraPaths": [
         "/home/peace/.local/lib/python3.12/site-packages",
-        "./backend"
+        "/home/peace/Documents/Kali$/backend"
     ]
 }

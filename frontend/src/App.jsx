@@ -13,7 +13,7 @@ import {
 
 const API_URL = import.meta.env.PROD
   ? '/api/stock'
-  : 'http://localhost:8000/api/stock';
+  : 'http://127.0.0.1:8000/api/stock';
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);

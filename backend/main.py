@@ -26,36 +26,49 @@ async def get_stock_data(symbol: str):
     try:
         ticker_symbol = format_ticker(symbol)
         stock = yf.Ticker(ticker_symbol)
-        info = stock.info
         
-        # Check if we got valid data
-        if 'regularMarketPrice' not in info and 'currentPrice' not in info:
-            # Fallback to fetching history if info fails
+        # Use fast_info if available for speed and reliability, fallback to history
+        current_price = None
+        info = {}
+        
+        try:
+            info = stock.info
+            current_price = info.get('currentPrice', info.get('regularMarketPrice'))
+        except Exception:
+            pass
+
+        if current_price is None:
             hist = stock.history(period="1d")
             if hist.empty:
-                raise HTTPException(status_code=404, detail="Stock not found")
-            current_price = hist['Close'].iloc[-1]
-            prev_close = stock.info.get('previousClose', current_price)
-        else:
-            current_price = info.get('currentPrice', info.get('regularMarketPrice'))
+                raise HTTPException(status_code=404, detail=f"Stock '{symbol.upper()}' not found")
+            current_price = float(hist['Close'].iloc[-1])
             prev_close = info.get('previousClose', current_price)
+        else:
+            prev_close = info.get('previousClose', current_price or 0)
             
-        change = current_price - prev_close
+        change = float(current_price) - float(prev_close)
         percent_change = (change / prev_close) * 100 if prev_close else 0
 
         name = info.get('longName', info.get('shortName', symbol.upper()))
         
+        # Prepare for return with safe rounding
+        final_price: float = round(float(current_price), 2)
+        final_change: float = round(float(change), 2)
+        final_percent: float = round(float(percent_change), 2)
+
         return {
             "symbol": symbol.upper(),
             "name": name,
-            "price": round(current_price, 2),
-            "change": round(change, 2),
-            "percent_change": round(percent_change, 2),
+            "price": final_price,
+            "change": final_change,
+            "percent_change": final_percent,
             "currency": info.get('currency', 'INR')
         }
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print(f"Error fetching stock data for {symbol}: {e}")
-        raise HTTPException(status_code=404, detail=f"Stock '{symbol}' not found or data unavailable")
+        print(f"Server Error for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @app.get("/api/stock/{symbol}/history")
 async def get_stock_history(symbol: str, range: str = "1mo"):
