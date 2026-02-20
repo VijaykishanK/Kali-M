@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Search, TrendingUp, TrendingDown, LogOut } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, LogOut, Info, Gauge, Zap, BarChart3 } from 'lucide-react';
 import axios from 'axios';
+import { popularIndianStocks } from './indianStocks';
 import {
+
   AreaChart,
   Area,
   XAxis,
@@ -22,6 +24,7 @@ const App = () => {
 
   // Dashboard state
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [stockData, setStockData] = useState(null);
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -80,6 +83,22 @@ const App = () => {
     }).format(value);
   };
 
+  const formatLargeNumber = (num) => {
+    if (!num) return 'N/A';
+    if (num >= 1e12) return (num / 1e12).toFixed(2) + 'T';
+    if (num >= 1e7) return (num / 1e7).toFixed(2) + ' Cr';
+    if (num >= 1e5) return (num / 1e5).toFixed(2) + ' L';
+    return num.toLocaleString('en-IN');
+  };
+
+  const getLikelihoodColor = (likelihood) => {
+    if (likelihood >= 70) return '#10b981';
+    if (likelihood >= 55) return '#34d399';
+    if (likelihood > 45) return '#9ca3af';
+    if (likelihood > 30) return '#f87171';
+    return '#ef4444';
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="login-container">
@@ -109,8 +128,22 @@ const App = () => {
     );
   }
 
+  // Filter suggestions based on query
+  const filteredStocks = searchQuery.trim() === ''
+    ? popularIndianStocks.slice(0, 10)
+    : popularIndianStocks.filter(stock =>
+      stock.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      stock.name.toLowerCase().includes(searchQuery.toLowerCase())
+    ).slice(0, 10);
+
+  const handleSuggestionClick = (symbol) => {
+    setSearchQuery(symbol);
+    setShowSuggestions(false);
+    fetchStockData(symbol, timeRange);
+  };
+
   return (
-    <div className="dashboard-container">
+    <div className="dashboard-container" onClick={() => setShowSuggestions(false)}>
       <header className="dashboard-header">
         <div className="header-content">
           <div className="logo">
@@ -124,13 +157,38 @@ const App = () => {
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onClick={(e) => e.stopPropagation()}
                   placeholder="Search Indian stocks (e.g., RELIANCE, TCS)"
                   className="search-input"
+                  autoComplete="off"
                 />
                 <button type="submit" className="search-button">
                   Search
                 </button>
+
+                {showSuggestions && (
+                  <div className="suggestions-dropdown" onClick={(e) => e.stopPropagation()}>
+                    {filteredStocks.length > 0 ? (
+                      filteredStocks.map((stock) => (
+                        <div
+                          key={stock.symbol}
+                          className="suggestion-item"
+                          onClick={() => handleSuggestionClick(stock.symbol)}
+                        >
+                          <span className="suggestion-symbol">{stock.symbol}</span>
+                          <span className="suggestion-name">{stock.name}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="suggestion-empty">No stocks found</div>
+                    )}
+                  </div>
+                )}
               </div>
             </form>
           </div>
@@ -190,7 +248,70 @@ const App = () => {
               </div>
             </div>
 
-            <div className="chart-card animate-fade-in delay-1">
+            <div className="prediction-card animate-fade-in delay-1">
+              <div className="card-header">
+                <Gauge size={20} />
+                <h3>Movement AI Prediction</h3>
+              </div>
+              <div className="prediction-content">
+                <div className="likelihood-score" style={{ color: getLikelihoodColor(stockData.prediction.likelihood) }}>
+                  <span className="score-value">{stockData.prediction.likelihood}%</span>
+                  <span className="score-label">Likelihood</span>
+                </div>
+                <div className={`signal-badge ${stockData.prediction.signal.toLowerCase()}`}>
+                  {stockData.prediction.signal}
+                </div>
+                <div className="prediction-reasons">
+                  {stockData.prediction.reasons.map((reason, i) => (
+                    <div key={i} className="reason-tag">
+                      <Zap size={12} />
+                      <span>{reason}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="fundamentals-card animate-fade-in delay-2">
+              <div className="card-header">
+                <Info size={20} />
+                <h3>Market Fundamentals</h3>
+              </div>
+              <div className="fundamentals-grid">
+                <div className="f-item">
+                  <span className="f-label">Market Cap</span>
+                  <span className="f-value">{formatLargeNumber(stockData.fundamentals.marketCap)}</span>
+                </div>
+                <div className="f-item">
+                  <span className="f-label">P/E Ratio</span>
+                  <span className="f-value">{stockData.fundamentals.peRatio?.toFixed(2) || 'N/A'}</span>
+                </div>
+                <div className="f-item">
+                  <span className="f-label">52W High</span>
+                  <span className="f-value">{formatCurrency(stockData.fundamentals.week52High, stockData.currency)}</span>
+                </div>
+                <div className="f-item">
+                  <span className="f-label">52W Low</span>
+                  <span className="f-value">{formatCurrency(stockData.fundamentals.week52Low, stockData.currency)}</span>
+                </div>
+                <div className="f-item">
+                  <span className="f-label">Div. Yield</span>
+                  <span className="f-value">{stockData.fundamentals.dividendYield?.toFixed(2)}%</span>
+                </div>
+                <div className="f-item">
+                  <span className="f-label">Volume</span>
+                  <span className="f-value">{formatLargeNumber(stockData.fundamentals.volume)}</span>
+                </div>
+              </div>
+              {stockData.fundamentals.sector && (
+                <div className="sector-info">
+                  <BarChart3 size={14} />
+                  <span>{stockData.fundamentals.sector} • {stockData.fundamentals.industry}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="chart-card animate-fade-in delay-3">
               <div className="chart-header">
                 <h3>Price History</h3>
                 <div className="time-ranges">

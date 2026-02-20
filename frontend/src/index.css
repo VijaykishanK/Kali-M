@@ -30,12 +30,21 @@ body {
 
 /* Animations */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .animate-fade-in {
@@ -233,6 +242,58 @@ body {
   background-color: var(--primary-hover);
 }
 
+/* Search Autocomplete Dropdown */
+.suggestions-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.5rem;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.2s;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:hover {
+  background-color: var(--bg-secondary);
+}
+
+.suggestion-symbol {
+  font-weight: 700;
+  color: var(--text-main);
+  font-size: 0.9375rem;
+}
+
+.suggestion-name {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.suggestion-empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
 .logout-button {
   display: flex;
   align-items: center;
@@ -261,7 +322,9 @@ body {
 }
 
 /* States */
-.loading-state, .error-state, .empty-state {
+.loading-state,
+.error-state,
+.empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -324,72 +387,28 @@ body {
 /* Content Grid */
 .content-grid {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.5rem;
 }
 
-.price-card {
+.price-card,
+.prediction-card,
+.fundamentals-card {
   background: var(--bg-color);
   border-radius: 1rem;
   padding: 2rem;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-color);
   display: flex;
+  flex-direction: column;
+}
+
+.price-card {
+  flex-direction: row;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   gap: 2rem;
-}
-
-.stock-symbol {
-  font-size: 2rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  color: var(--text-main);
-  margin-bottom: 0.25rem;
-}
-
-.stock-name {
-  font-size: 1rem;
-  font-weight: 500;
-  color: var(--text-muted);
-}
-
-.price-display {
-  text-align: right;
-}
-
-.current-price {
-  font-size: 3rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  color: var(--text-main);
-  line-height: 1;
-  margin-bottom: 0.5rem;
-}
-
-.price-change {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 1.25rem;
-  font-weight: 600;
-  padding: 0.5rem 1rem;
-  border-radius: 2rem;
-}
-
-.price-change.positive {
-  color: var(--success-color);
-  background-color: rgba(16, 185, 129, 0.1);
-}
-
-.price-change.negative {
-  color: var(--danger-color);
-  background-color: rgba(239, 68, 68, 0.1);
-}
-
-.percent-change {
-  font-size: 1rem;
-  opacity: 0.9;
 }
 
 .chart-card {
@@ -398,6 +417,124 @@ body {
   padding: 2rem;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-color);
+  grid-column: 1 / -1;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.card-header h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+/* Prediction Card */
+.prediction-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.likelihood-score {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1rem;
+}
+
+.score-value {
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.score-label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.signal-badge {
+  padding: 0.4rem 1rem;
+  border-radius: 2rem;
+  font-weight: 700;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+}
+
+.signal-badge.bullish {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--success-color);
+}
+
+.signal-badge.bearish {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--danger-color);
+}
+
+.signal-badge.neutral {
+  background-color: var(--bg-secondary);
+  color: var(--text-muted);
+}
+
+.prediction-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.reason-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background-color: var(--bg-secondary);
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Fundamentals Card */
+.fundamentals-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.f-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.f-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.f-value {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.sector-info {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 .chart-header {
@@ -453,7 +590,7 @@ body {
   .header-content {
     flex-wrap: wrap;
   }
-  
+
   .search-container {
     order: 3;
     max-width: 100%;
@@ -464,16 +601,16 @@ body {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .price-display {
     text-align: left;
   }
-  
+
   .chart-header {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .time-ranges {
     width: 100%;
     overflow-x: auto;

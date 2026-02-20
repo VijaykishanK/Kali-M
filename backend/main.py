@@ -1,6 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
+import pandas as pd
+import numpy as np
+
 app = FastAPI(title="Indian Stock Search API")
 
 # Configure CORS for frontend access
@@ -14,61 +17,110 @@ app.add_middleware(
 
 def format_ticker(symbol: str) -> str:
     """Format symbol for Indian stocks on Yahoo Finance"""
-    # Simply append .NS if not there for Indian stocks
     symbol = symbol.upper().strip()
     if not symbol.endswith('.NS') and not symbol.endswith('.BO'):
         symbol += '.NS'
     return symbol
 
+def calculate_prediction(hist: pd.DataFrame):
+    """Calculate likelihood of stock going up based on RSI and SMA"""
+    if len(hist) < 20:
+        return {"likelihood": 50, "signal": "Neutral", "reason": "Insufficient data"}
+    
+    # Calculate RSI
+    delta = hist['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs)).iloc[-1]
+    
+    # Calculate SMA
+    sma_20 = hist['Close'].rolling(window=20).mean().iloc[-1]
+    current_price = hist['Close'].iloc[-1]
+    
+    # Simple weighted logic
+    score = 50
+    reasons = []
+    
+    # RSI Logic
+    if rsi < 30:
+        score += 25
+        reasons.append("Oversold (RSI)")
+    elif rsi > 70:
+        score -= 25
+        reasons.append("Overbought (RSI)")
+    elif rsi > 50:
+        score += 10
+        reasons.append("Positive Momentum")
+    else:
+        score -= 10
+        reasons.append("Negative Momentum")
+        
+    # SMA Logic
+    if current_price > sma_20:
+        score += 15
+        reasons.append("Above 20-day SMA")
+    else:
+        score -= 15
+        reasons.append("Below 20-day SMA")
+        
+    # Clamp score
+    score = max(5, min(95, score))
+    
+    signal = "Bullish" if score > 55 else "Bearish" if score < 45 else "Neutral"
+    
+    return {
+        "likelihood": round(float(score), 2),
+        "signal": signal,
+        "rsi": round(float(rsi), 2),
+        "reasons": reasons
+    }
+
 @app.get("/api/stock/{symbol}")
 async def get_stock_data(symbol: str):
-    """Get current price and basic info for a stock"""
+    """Get current price, fundamentals, and prediction for a stock"""
     try:
         ticker_symbol = format_ticker(symbol)
         stock = yf.Ticker(ticker_symbol)
         
-        # Use fast_info if available for speed and reliability, fallback to history
-        current_price = None
-        info = {}
+        # Get history for prediction (need at least 30 days)
+        hist = stock.history(period="60d")
+        if hist.empty:
+            raise HTTPException(status_code=404, detail=f"Stock '{symbol.upper()}' not found")
         
-        try:
-            info = stock.info
-            current_price = info.get('currentPrice', info.get('regularMarketPrice'))
-        except Exception:
-            pass
-
-        if current_price is None:
-            hist = stock.history(period="1d")
-            if hist.empty:
-                raise HTTPException(status_code=404, detail=f"Stock '{symbol.upper()}' not found")
-            current_price = float(hist['Close'].iloc[-1])
-            prev_close = info.get('previousClose', current_price)
-        else:
-            prev_close = info.get('previousClose', current_price or 0)
-            
+        info = stock.info
+        current_price = float(hist['Close'].iloc[-1])
+        prev_close = info.get('previousClose', current_price)
+        
         change = float(current_price) - float(prev_close)
         percent_change = (change / prev_close) * 100 if prev_close else 0
 
-        name = info.get('longName', info.get('shortName', symbol.upper()))
+        prediction = calculate_prediction(hist)
         
-        # Prepare for return with safe rounding
-        final_price: float = round(float(current_price), 2)
-        final_change: float = round(float(change), 2)
-        final_percent: float = round(float(percent_change), 2)
-
         return {
             "symbol": symbol.upper(),
-            "name": name,
-            "price": final_price,
-            "change": final_change,
-            "percent_change": final_percent,
-            "currency": info.get('currency', 'INR')
+            "name": info.get('longName', info.get('shortName', symbol.upper())),
+            "price": round(current_price, 2),
+            "change": round(change, 2),
+            "percent_change": round(percent_change, 2),
+            "currency": info.get('currency', 'INR'),
+            "prediction": prediction,
+            "fundamentals": {
+                "marketCap": info.get('marketCap'),
+                "peRatio": info.get('trailingPE'),
+                "week52High": info.get('fiftyTwoWeekHigh'),
+                "week52Low": info.get('fiftyTwoWeekLow'),
+                "dividendYield": info.get('dividendYield', 0) * 100 if info.get('dividendYield') else 0,
+                "volume": info.get('volume'),
+                "sector": info.get('sector'),
+                "industry": info.get('industry')
+            }
         }
     except HTTPException as he:
         raise he
     except Exception as e:
-        print(f"Server Error for {symbol}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        print(f"Error fetching stock data for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Server Error: {str(e)}")
 
 @app.get("/api/stock/{symbol}/history")
 async def get_stock_history(symbol: str, range: str = "1mo"):
